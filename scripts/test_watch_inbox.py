@@ -61,6 +61,15 @@ class MonitorTests(unittest.TestCase):
         self.poll()
         self.assertEqual(self.notify.call_count, 3)
 
+    def test_entries_are_lf_delimited_so_bare_cr_starts_no_entry(self):
+        self.log.write_bytes(b"plain\r- phantom\n")
+        self.poll()
+        self.notify.assert_not_called()
+        both = b"plain\r- phantom\n- crlf entry\r\n"
+        self.log.write_bytes(both)
+        self.poll()
+        self.notify.assert_called_once_with(self.log, len(both))
+
     def test_rewrite_truncation_and_removal_stop_instead_of_losing_work(self):
         for replacement in (b"- other\n", b"", None):
             with self.subTest(replacement=replacement):
@@ -208,11 +217,43 @@ class ProcessedPrefixTests(unittest.TestCase):
     def test_until_notice_exits_at_once_for_unprocessed_backlog(self):
         self.assertEqual(self.run_main("--until-notice"), (0, self.notice(len(self.first)), "", []))
 
-    def test_until_notice_ignores_unchanged_log_and_partial_entry(self):
+    def test_until_notice_stays_silent_on_unchanged_log_and_partial_entry(self):
+        # The simulated interruption ends the wait, which --until-notice reports as exit 3.
         for change in (None, lambda: self.log.write_bytes(self.first + b"- partial")):
             with self.subTest(change=change):
                 code, out, err, sleeps = self.run_main("--until-notice", "--after", str(len(self.first)), change=change)
-                self.assertEqual((code, out, len(sleeps)), (0, "", 4))
+                self.assertEqual((code, out, len(sleeps)), (3, "", 4))
+
+    def test_until_notice_reports_a_stop_without_notice_as_exit_three(self):
+        code, out, err, sleeps = self.run_main("--until-notice", "--after", str(len(self.first)))
+        self.assertEqual((code, out), (3, ""))
+        self.assertIn("without a notice", err)
+        with patch.object(watch, "owner_alive", return_value=False), redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()) as err:
+            code = watch.main(["--root", str(self.root), "--recipient", "project-one", "--after", str(len(self.first)), "--until-notice"])
+        self.assertEqual((code, out.getvalue()), (3, ""))
+        self.assertIn("without a notice", err.getvalue())
+
+    def test_seeded_partial_entry_is_announced_once_its_newline_arrives(self):
+        writes = iter([self.first + b"- second", self.first + b"- second\n"])
+        sleeps = []
+
+        def fake_sleep(seconds):
+            sleeps.append(seconds)
+            self.log.write_bytes(next(writes))
+
+        with patch.object(watch.time, "sleep", side_effect=fake_sleep), patch.object(watch, "owner_alive", return_value=True), redirect_stdout(io.StringIO()) as out:
+            code = watch.main(["--root", str(self.root), "--recipient", "project-one", "--after", str(len(self.first)), "--until-notice"])
+        self.assertEqual((code, out.getvalue(), len(sleeps)), (0, self.notice(len(self.first) + 9), 2))
+
+    def test_seeded_progress_survives_a_failed_notification(self):
+        monitor = watch.Monitor(self.log)
+        monitor.skip(len(self.first))
+        self.log.write_bytes(self.first + b"- second\n")
+        with self.assertRaises(RuntimeError):
+            monitor.poll(Mock(side_effect=RuntimeError("hook failed")))
+        deliver = Mock()
+        monitor.poll(deliver)
+        deliver.assert_called_once_with(self.log, len(self.first) + 9)
 
     def test_rewrite_of_processed_prefix_stops_without_notice(self):
         code, out, err, sleeps = self.run_main("--after", str(len(self.first)), change=lambda: self.log.write_bytes(b"# Messages\n- other\n- second\n"))
@@ -231,7 +272,7 @@ class ProcessedPrefixTests(unittest.TestCase):
 
     def test_missing_log_without_processed_bytes_stays_quiet(self):
         self.log.unlink()
-        self.assertEqual(self.run_main("--until-notice")[:3], (0, "", ""))
+        self.assertEqual(self.run_main("--until-notice")[:2], (3, ""))
 
 
 if __name__ == "__main__":

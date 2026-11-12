@@ -69,7 +69,7 @@ SELF_ID='<your supplied participant ID>'
 python3 scripts/watch_inbox.py --recipient "${SELF_ID:?Set SELF_ID}" --once
 ```
 
-`INBOX_CHANGED` reports new complete entries and the log's complete byte count. Silence can mean an empty, unchanged, or missing inbox; check the ID and setup if a message was expected. Pass that count as `--after` to later starts so processed entries are not announced again. Stop a foreground watcher with **Ctrl-C**.
+`INBOX_CHANGED` reports complete entries beyond `--after` (0 by default) and the log's complete byte count. Silence means no such entry: the log may be missing, empty, header-only, or end in a partial entry. Check the ID and setup if a message was expected. After recording the entries in your processing record, pass that count as `--after` to later starts so they are not announced again. Stop a foreground watcher with **Ctrl-C**.
 
 Continuous monitoring and agent wake-up depend on the runtime: [Codex](runtimes/CODEX.md) queues a notice through `--notify`; [Claude Code](runtimes/CLAUDE-CODE.md) re-arms a single-notice watcher, whose idle wake-up is live-verified. [The monitoring contract](COMMUNICATION.md#monitoring-and-tokens) covers the shared rules. **Polling uses no model tokens**; notices and message processing can.
 

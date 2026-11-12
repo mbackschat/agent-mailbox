@@ -43,7 +43,9 @@ class Monitor:
             raise LogChanged(f"Append-only log was rewritten or truncated: {self.log}")
         complete = data[:data.rfind(b"\n") + 1]
         added = complete[len(self.observed):]
-        if any(line.startswith(b"- ") for line in added.splitlines()):
+        # Split on LF only, like the completeness and --after checks: splitlines() would also
+        # break at a bare CR and announce "- " text inside a non-entry line.
+        if any(line.startswith(b"- ") for line in added.split(b"\n")):
             deliver(self.log, len(complete))
         # Commit detection progress only after delivery succeeds; restarting replays it.
         self.observed = complete
@@ -81,7 +83,7 @@ def main(argv=None):
     parser.add_argument("--after", type=int, default=0, help="Complete byte count already processed; only later entries are announced")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--once", action="store_true", help="Check once, announcing complete entries beyond --after")
-    mode.add_argument("--until-notice", action="store_true", help="Exit after the first notice, for runtimes woken by job exit")
+    mode.add_argument("--until-notice", action="store_true", help="Exit 0 after the first notice, for runtimes woken by job exit; exit 3 if stopped without one")
     parser.add_argument("--notify", type=Path, help="Optional executable called with log path and complete byte count")
     args = parser.parse_args(argv)
     if args.after < 0:
@@ -94,24 +96,29 @@ def main(argv=None):
     if hook and (not Path(hook).is_file() or not os.access(hook, os.X_OK)):
         parser.error("--notify must name an executable file")
     monitor = Monitor(args.root.resolve() / "inboxes" / args.recipient / "MESSAGE_LOG.md")
-    notices = []
+    delivered = False
 
     def deliver(log, size):
+        nonlocal delivered
         notify(log, size, hook)
-        notices.append(size)
+        delivered = True
 
     try:
         monitor.skip(args.after)
         while args.once or owner_alive(args.owner_pid):
             monitor.poll(deliver)
-            if args.once or (args.until_notice and notices):
+            if args.once or (args.until_notice and delivered):
                 break
             time.sleep(args.interval)
     except KeyboardInterrupt:
-        return 0
+        pass
     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
         print(f"Watcher stopped: {error}", file=sys.stderr)
         return 1
+    # A job-exit wake-up must not look like delivery when the owner vanished or the wait was interrupted.
+    if args.until_notice and not delivered:
+        print("Watcher stopped without a notice: owner exited or interrupted", file=sys.stderr)
+        return 3
     return 0
 
 

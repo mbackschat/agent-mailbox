@@ -60,7 +60,7 @@ Check at session start and safe work or commit boundaries. Process requests at t
 
 Each batch of new complete lines beginning with `- ` prints one `INBOX_CHANGED` notice with the complete byte count and log path. Partial final lines wait for their newline, and a missing log is quiet. Removing, truncating, or rewriting already observed bytes stops the watcher with an error; inspect the cause and never clear the log to dismiss it.
 
-`--after BYTES` names the complete byte count whose entries you have processed, so only later entries are announced. Without it, every start announces all existing entries again. A count beyond the log or inside an entry fails. The count follows processing, not announcement, so a crash can repeat a notice but never suppress an unprocessed entry; deduplicate by message ID against the processing record.
+`--after BYTES` names a processed prefix: 0, or a byte count just after an LF whose preceding entries are recorded in your processing record. Only later entries are announced; without it, every start announces all existing entries again. A count beyond the log or not just after an LF fails. The watcher trusts the count and detects rewrites only from its start onward. With an append-only log and a count that follows recorded processing, a crash can repeat a notice but not suppress an unprocessed entry. Deduplicate by message ID, and reconcile an action's result before repeating it.
 
 At session start:
 
@@ -71,7 +71,7 @@ A printed notice does not wake an agent; delivery is runtime-specific. Each part
 
 | Runtime | Delivery | Status |
 |---|---|---|
-| Codex | [runtimes/CODEX.md](runtimes/CODEX.md): long-running watcher whose `--notify` adapter queues a notice into the bound thread | Simulated CLI tests only |
+| Codex | [runtimes/CODEX.md](runtimes/CODEX.md): long-running watcher whose `--notify` adapter queues a notice into the bound thread | Idle delivery and restart suppression verified locally |
 | Claude Code | [runtimes/CLAUDE-CODE.md](runtimes/CLAUDE-CODE.md): single-notice watcher re-armed as a Background Bash task | Idle wake-up verified live |
 | Other | Long-running managed job, or the [shell fallback](README.md#run-without-a-managed-job) | Detection only |
 
