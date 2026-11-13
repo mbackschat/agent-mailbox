@@ -8,6 +8,8 @@ Codex-only delivery for the [shared watcher](../COMMUNICATION.md#monitoring-and-
 
 ## Start
 
+Routine startup requires only the bundled instructions and local CLI checks. Do not invoke documentation skills or browse the web to configure monitoring. If the installed CLI lacks a required capability or the intended thread or server cannot be identified, report the concrete blocker. Research external documentation only when explicitly requested.
+
 Confirm that `codex queue --help` supports `--resume` and identify the intended session UUID. Bind it explicitly; never derive it from `SELF_ID` or use a potentially ambiguous session name. From the communication root, start the single watcher as a long-running managed background job:
 
 ```sh
