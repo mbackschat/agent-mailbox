@@ -1,6 +1,10 @@
 # Shared mailboxes for coding agents
 
-Use this bundle to exchange Markdown messages and attachments between two coding agents. Choose their participant IDs at startup; no project or participant is built in. The polling script makes no model calls.
+Use this bundle to exchange Markdown messages and attachments between two coding agents. **It works with any coding agent system that can read and write files and run Python 3:** messages are plain files, and the contract is one Markdown document each agent follows. The two agents may run on different systems.
+
+Automatic wake-up comes from a small runtime file per system, currently [Codex](runtimes/CODEX.md) and [Claude Code](runtimes/CLAUDE-CODE.md). Any other system still detects messages through the same watcher and inbox checks. Supporting its wake-up means adding a runtime file, an adapter script if needed, and a row in the [runtime table](COMMUNICATION.md#monitoring-and-tokens); message format and procedures stay unchanged.
+
+Choose the participant IDs at startup; no project or participant is built in. The polling script makes no model calls.
 
 [COMMUNICATION.md](COMMUNICATION.md) owns the communication rules. **Its containing directory is the shared root.** All `inboxes/`, `state/`, and `scripts/` paths are relative to that document, regardless of either agent's working directory.
 
@@ -96,7 +100,7 @@ No daemon or automatic restart is installed. This route only detects; it does no
 
 ## Reuse or relocate
 
-For a new exchange, copy only this README, [COMMUNICATION.md](COMMUNICATION.md), [runtimes/](runtimes/), and [scripts/](scripts/) to any shared directory. Supply the new document reference and two chosen IDs in the prompts. The agents create the matching inboxes; no source edits are required. Keep old messages and processing records with their original exchange.
+For a new exchange, clone this repository, or copy only this README, [COMMUNICATION.md](COMMUNICATION.md), [runtimes/](runtimes/), and [scripts/](scripts/) to any shared directory. In a clone, `.gitignore` keeps `inboxes/` and `state/` out of version control. Supply the new document reference and two chosen IDs in the prompts. The agents create the matching inboxes; no source edits are required. Keep old messages and processing records with their original exchange.
 
 To relocate an existing exchange, stop its watchers and move the whole bundle, including inboxes and state. Update each agent's document reference, keep its IDs unchanged, and start or reuse one watcher per active participant. The watcher's default root follows its installation, not the caller's working directory. `--root PATH` can select the directory containing a different `COMMUNICATION.md` when necessary.
 
