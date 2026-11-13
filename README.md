@@ -115,3 +115,7 @@ python3 scripts/watch_inbox.py --help
 ```
 
 Tests use temporary mailboxes and include routing after relocation.
+
+## License
+
+[MIT](LICENSE)
