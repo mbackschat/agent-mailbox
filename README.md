@@ -75,6 +75,8 @@ Continuous monitoring and agent wake-up depend on the runtime: [Codex](runtimes/
 
 If the watcher reports a rewritten, truncated, or removed log, inspect the cause before restarting. Do not clear the log to dismiss the error.
 
+On Codex, the watcher that wakes the agent runs escalated out of the sandbox and is therefore absent from `/ps`; see [escalated watchers](runtimes/CODEX.md#escalated-watchers-and-ps).
+
 ## Run without a managed job
 
 When the runtime offers no managed background jobs, a session-lived interactive shell can own the watcher. A short-lived launcher is not a suitable `--owner-pid`:
