@@ -2,6 +2,7 @@ from contextlib import redirect_stderr, redirect_stdout
 import importlib.util
 import io
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -201,6 +202,24 @@ class ProcessedPrefixTests(unittest.TestCase):
     def notice(self, size):
         return f"INBOX_CHANGED\t{size}\t{self.log.resolve()}\n"
 
+    def until_notice_output(self, out, size):
+        """Split `--until-notice` stdout into its notice and the argv of the printed re-arm command."""
+        notice, rearm = out.splitlines(keepends=True)
+        self.assertEqual(notice, self.notice(size))
+        label, instruction, command = rearm.rstrip("\n").split("\t")
+        self.assertEqual(label, "NEXT")
+        self.assertIn(str((self.root / "state" / "project-one.md").resolve()), instruction)
+        return shlex.split(command)
+
+    def assert_rearm_resumes_after(self, argv, size):
+        # The oracle is behavioral: the printed command must target the same script and mailbox,
+        # resume after `size`, and therefore wait silently instead of replaying processed entries.
+        self.assertEqual(argv[:2], ["python3", str(Path(watch.__file__).resolve())])
+        self.assertEqual(argv[argv.index("--after") + 1], str(size))
+        with patch.object(watch.time, "sleep", side_effect=KeyboardInterrupt), patch.object(watch, "owner_alive", return_value=True), redirect_stdout(io.StringIO()) as out, redirect_stderr(io.StringIO()):
+            code = watch.main(argv[2:])
+        self.assertEqual((code, out.getvalue()), (3, ""))
+
     def test_restart_after_processed_prefix_does_not_replay_it(self):
         self.assertEqual(self.run_main("--once", "--after", str(len(self.first)))[:2], (0, ""))
         self.assertEqual(self.run_main("--once")[:2], (0, self.notice(len(self.first))))
@@ -212,10 +231,27 @@ class ProcessedPrefixTests(unittest.TestCase):
     def test_until_notice_waits_silently_then_exits_after_first_notice(self):
         appended = self.first + b"- second\n"
         code, out, err, sleeps = self.run_main("--until-notice", "--after", str(len(self.first)), change=lambda: self.log.write_bytes(appended))
-        self.assertEqual((code, out, err, sleeps), (0, self.notice(len(appended)), "", [30]))
+        self.assertEqual((code, err, sleeps), (0, "", [30]))
+        self.until_notice_output(out, len(appended))
 
     def test_until_notice_exits_at_once_for_unprocessed_backlog(self):
-        self.assertEqual(self.run_main("--until-notice"), (0, self.notice(len(self.first)), "", []))
+        code, out, err, sleeps = self.run_main("--until-notice")
+        self.assertEqual((code, err, sleeps), (0, "", []))
+        self.until_notice_output(out, len(self.first))
+
+    def test_until_notice_prints_a_rearm_command_that_resumes_after_the_notice(self):
+        appended = self.first + b"- second\n"
+        self.log.write_bytes(appended)
+        code, out, err, sleeps = self.run_main("--until-notice", "--after", str(len(self.first)))
+        self.assertEqual(code, 0)
+        self.assert_rearm_resumes_after(self.until_notice_output(out, len(appended)), len(appended))
+
+    def test_stop_without_notice_prints_a_rearm_command_from_the_previous_count(self):
+        code, out, err, sleeps = self.run_main("--until-notice", "--after", str(len(self.first)))
+        self.assertEqual((code, out), (3, ""))
+        label, command = err.splitlines()[-1].split("\t")
+        self.assertEqual(label, "REARM")
+        self.assert_rearm_resumes_after(shlex.split(command), len(self.first))
 
     def test_until_notice_stays_silent_on_unchanged_log_and_partial_entry(self):
         # The simulated interruption ends the wait, which --until-notice reports as exit 3.
@@ -243,7 +279,8 @@ class ProcessedPrefixTests(unittest.TestCase):
 
         with patch.object(watch.time, "sleep", side_effect=fake_sleep), patch.object(watch, "owner_alive", return_value=True), redirect_stdout(io.StringIO()) as out:
             code = watch.main(["--root", str(self.root), "--recipient", "project-one", "--after", str(len(self.first)), "--until-notice"])
-        self.assertEqual((code, out.getvalue(), len(sleeps)), (0, self.notice(len(self.first) + 9), 2))
+        self.assertEqual((code, len(sleeps)), (0, 2))
+        self.until_notice_output(out.getvalue(), len(self.first) + 9)
 
     def test_seeded_progress_survives_a_failed_notification(self):
         monitor = watch.Monitor(self.log)

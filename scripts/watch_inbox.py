@@ -6,6 +6,7 @@ import math
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -57,6 +58,17 @@ def notify(log, complete_bytes, hook=None):
     print(f"INBOX_CHANGED\t{complete_bytes}\t{log}", flush=True)
 
 
+def rearm_command(root, recipient, after):
+    """Return the command that starts the next single-notice watcher after `after` processed bytes.
+
+    Single-notice watchers end by design, and nothing restarts them; printing the exact command in the
+    exit output keeps the re-arm step in front of an agent whose context lost the runtime instructions.
+    The owner PID is omitted because the next launch has a different parent.
+    """
+    script = Path(__file__).resolve()
+    return shlex.join(["python3", str(script), "--root", str(root), "--recipient", recipient, "--after", str(after), "--until-notice"])
+
+
 def owner_alive(pid):
     try:
         os.kill(pid, 0)
@@ -95,19 +107,20 @@ def main(argv=None):
     hook = str(args.notify.resolve()) if args.notify else None
     if hook and (not Path(hook).is_file() or not os.access(hook, os.X_OK)):
         parser.error("--notify must name an executable file")
-    monitor = Monitor(args.root.resolve() / "inboxes" / args.recipient / "MESSAGE_LOG.md")
-    delivered = False
+    root = args.root.resolve()
+    monitor = Monitor(root / "inboxes" / args.recipient / "MESSAGE_LOG.md")
+    delivered = None
 
     def deliver(log, size):
         nonlocal delivered
         notify(log, size, hook)
-        delivered = True
+        delivered = size
 
     try:
         monitor.skip(args.after)
         while args.once or owner_alive(args.owner_pid):
             monitor.poll(deliver)
-            if args.once or (args.until_notice and delivered):
+            if args.once or (args.until_notice and delivered is not None):
                 break
             time.sleep(args.interval)
     except KeyboardInterrupt:
@@ -116,9 +129,13 @@ def main(argv=None):
         print(f"Watcher stopped: {error}", file=sys.stderr)
         return 1
     # A job-exit wake-up must not look like delivery when the owner vanished or the wait was interrupted.
-    if args.until_notice and not delivered:
+    if args.until_notice and delivered is None:
         print("Watcher stopped without a notice: owner exited or interrupted", file=sys.stderr)
+        print(f"REARM\t{rearm_command(root, args.recipient, args.after)}", file=sys.stderr)
         return 3
+    if args.until_notice:
+        state = root / "state" / f"{args.recipient}.md"
+        print(f"NEXT\tRecord these entries in {state}, then re-arm in the background with:\t{rearm_command(root, args.recipient, delivered)}", flush=True)
     return 0
 
 

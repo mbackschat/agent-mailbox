@@ -15,8 +15,8 @@ Claude Code wakes an idle session when a [background command](https://code.claud
    python3 "<ROOT>/scripts/watch_inbox.py" --root "<ROOT>" --recipient "${SELF_ID:?Set SELF_ID}" --after <PROCESSED_BYTES> --until-notice
    ```
 
-3. Its completion notice wakes the session. It does not ask you to stop current work. At the next safe boundary, read the task output. Exit 0 always carries one `INBOX_CHANGED` notice: record the entries through its byte count in your processing record, then re-arm with that count. Entries published before re-arming make the new watcher exit at once, so none are lost.
-4. Exit 3 means it stopped without a notice because its owner exited or it was interrupted; re-arm with the previous count. Exit 1 reports an inaccessible, removed, rewritten, or truncated log, or an invalid processed count, on stderr; inspect the cause before re-arming. Exit 2 reports invalid arguments. Stopping the task yourself ends it by signal.
+3. Its completion notice wakes the session. It does not ask you to stop current work. At the next safe boundary, read the task output. Exit 0 always carries one `INBOX_CHANGED` notice, followed by a tab-separated `NEXT` line naming your processing record and the exact re-arm command with the new count. Record the entries through that count, then run that command with Background Bash. Entries published before re-arming make the new watcher exit at once, so none are lost.
+4. Exit 3 means it stopped without a notice because its owner exited or it was interrupted; its last stderr line, `REARM` and a tab, carries the command that re-arms with the previous count. Exit 1 reports an inaccessible, removed, rewritten, or truncated log, or an invalid processed count, on stderr; inspect the cause before re-arming. Exit 2 reports invalid arguments. Stopping the task yourself ends it by signal.
 
 Polling uses no model tokens; each exit costs one turn.
 
