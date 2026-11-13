@@ -2,7 +2,7 @@
 
 Use this bundle to exchange Markdown messages and attachments between two coding agents. **It works with any coding agent system that can read and write files and run Python 3:** messages are plain files, and the contract is one Markdown document each agent follows. The two agents may run on different systems.
 
-Automatic wake-up comes from a small runtime file per system, currently [Codex](runtimes/CODEX.md) and [Claude Code](runtimes/CLAUDE-CODE.md). Any other system still detects messages through the same watcher and inbox checks. Supporting its wake-up means adding a runtime file, an adapter script if needed, and a row in the [runtime table](COMMUNICATION.md#monitoring-and-tokens); message format and procedures stay unchanged.
+Automatic wake-up comes from a small runtime file per system, currently [Codex](runtimes/CODEX.md) and [Claude Code](runtimes/CLAUDE-CODE.md). Any other system still detects messages through the same watcher and inbox checks, as [runtimes/OTHER.md](runtimes/OTHER.md) describes. Supporting its wake-up means adding a runtime file, an adapter script if needed, and a row in the [runtime table](COMMUNICATION.md#monitoring-and-tokens); message format and procedures stay unchanged.
 
 Choose the participant IDs at startup; no project or participant is built in. The polling script makes no model calls.
 
@@ -161,39 +161,18 @@ agent-mailbox/
     └── web-ui.md
 ```
 
-## Check or monitor an inbox
+## Troubleshooting
 
-Python 3 is required; no additional packages are needed. From the directory containing `COMMUNICATION.md`, with `SELF_ID` set to the value supplied to that agent, check once:
-
-```sh
-SELF_ID='<your supplied participant ID>'
-python3 scripts/watch_inbox.py --recipient "${SELF_ID:?Set SELF_ID}" --once
-```
-
-`INBOX_CHANGED` reports complete entries beyond `--after` (0 by default) and the log's complete byte count. Silence means no such entry: the log may be missing, empty, header-only, or end in a partial entry. Check the ID and setup if a message was expected. After recording the entries in your processing record, pass that count as `--after` to later starts so they are not announced again. Stop a foreground watcher with **Ctrl-C**.
-
-Continuous monitoring and agent wake-up depend on the runtime: [Codex](runtimes/CODEX.md) queues a notice through `--notify`; [Claude Code](runtimes/CLAUDE-CODE.md) re-arms a single-notice watcher, whose idle wake-up is live-verified. [The monitoring contract](COMMUNICATION.md#monitoring-and-tokens) covers the shared rules. **Polling uses no model tokens**; notices and message processing can.
-
-If the watcher reports a rewritten, truncated, or removed log, inspect the cause before restarting. Do not clear the log to dismiss the error.
-
-On Codex, the watcher that wakes the agent runs escalated out of the sandbox and is therefore absent from `/ps`; see [escalated watchers](runtimes/CODEX.md#escalated-watchers-and-ps).
-
-## Run without a managed job
-
-When the runtime offers no managed background jobs, a session-lived interactive shell can own the watcher. A short-lived launcher is not a suitable `--owner-pid`:
+To see whether messages are waiting for an agent, run from the directory containing `COMMUNICATION.md`:
 
 ```sh
-python3 scripts/watch_inbox.py --recipient "${SELF_ID:?Set SELF_ID}" --after <PROCESSED_BYTES> --owner-pid "$$" &
-inbox_watcher_pid=$!
+python3 scripts/watch_inbox.py --recipient <ID> --after <PROCESSED_BYTES> --once
 ```
 
-It stops when the owner process disappears, checked once per polling cycle; ending an agent turn may leave it alive. Stop it before ending the session if its shell remains:
+Take `<PROCESSED_BYTES>` from that agent's processing record, `state/<ID>.md`; without `--after`, every entry is announced again. `INBOX_CHANGED` with a byte count means unprocessed entries are waiting. Silence means none: the log may be missing, empty, header-only, or end in a partial entry. Check the ID and setup if a message was expected.
 
-```sh
-kill "$inbox_watcher_pid"
-```
-
-No daemon or automatic restart is installed. This route only detects; it does not wake the agent.
+- If a watcher reports a rewritten, truncated, or removed log, inspect the cause before restarting it. Never clear the log to dismiss the error.
+- On Codex, the watcher that wakes the agent runs escalated out of the sandbox and is therefore absent from `/ps`; see [escalated watchers](runtimes/CODEX.md#escalated-watchers-and-ps).
 
 ## Reuse or relocate
 

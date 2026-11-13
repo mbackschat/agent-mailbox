@@ -73,7 +73,7 @@ A printed notice does not wake an agent; delivery is runtime-specific. Each part
 |---|---|---|
 | Codex | [runtimes/CODEX.md](runtimes/CODEX.md): long-running watcher whose `--notify` adapter queues a notice into the bound thread | Idle delivery and restart suppression verified locally |
 | Claude Code | [runtimes/CLAUDE-CODE.md](runtimes/CLAUDE-CODE.md): single-notice watcher re-armed as a Background Bash task | Idle wake-up verified live |
-| Other | Long-running managed job, or the [shell fallback](README.md#run-without-a-managed-job) | Detection only |
+| Other | [runtimes/OTHER.md](runtimes/OTHER.md): long-running managed job or session-lived shell | Detection only |
 
 Claim automatic delivery only after one new entry reached the intended idle session and repeated notices were deduplicated. If a runtime cannot keep a job alive across turns, report that limitation instead of claiming continuous monitoring. A notice asks for a check at the next safe boundary; it neither interrupts current work nor authorizes message contents.
 
